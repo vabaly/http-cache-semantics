@@ -1,9 +1,20 @@
 'use strict';
 // rfc7231 6.1
+
+// 默认情况下下列状态码缓存才生效？没有 304？
+// 相应状态码的含义：https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Status
 const statusCodeCacheableByDefault = [
+    // 不同请求方法对成功有不同的定义
     200,
+    // 203 是由代理服务器告知给客户端的，表示内容已被代理服务器修改
+    // 比如浏览器被 whistle（http://127.0.0.1:8899 就是代理服务器地址） 给代理了，
+    // 然后 whistle 对服务器的返回的内容进行了修改（可以通过 whistle.script 修改），
+    // 原本服务器是返回 200 的，但是 whistle 应该给浏览器返回 203
     203,
+    // 返回更新的头部而不需要返回内容
     204,
+    // 主要用于断点续传
+    // 【Todo】断点续传的实现和相关学习
     206,
     300,
     301,
@@ -15,16 +26,19 @@ const statusCodeCacheableByDefault = [
 ];
 
 // This implementation does not understand partial responses (206)
+// 此程序能够识别的状态码
 const understoodStatuses = [
     200,
     203,
     204,
     300,
     301,
+    // ====== 下列是比 statusCodeCacheableByDefault 多出的部分
     302,
     303,
     307,
     308,
+    // 上面是比 statusCodeCacheableByDefault 多出的部分 ======
     404,
     405,
     410,
@@ -32,6 +46,10 @@ const understoodStatuses = [
     501,
 ];
 
+// HTTP Header（HTTP 消息头）的文档可看这里：https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Headers
+// Hop-by-hop headers 翻译过来是逐跳消息头，也在上述文档中有说明
+// 直白点说就是如果浏览器和服务器之间有个 whistle，
+// 那么浏览器收到的这些头部应该认为这些消息头是 whistle 设置的，而不是服务器
 const hopByHopHeaders = {
     date: true, // included, because we add Age update Date
     connection: true,
@@ -43,6 +61,7 @@ const hopByHopHeaders = {
     'transfer-encoding': true,
     upgrade: true,
 };
+// 【Todo】排除以下的验证更新是什么鬼？
 const excludedFromRevalidationUpdate = {
     // Since the old body is reused, it doesn't make sense to change properties of the body
     'content-length': true,
@@ -78,6 +97,7 @@ function formatCacheControl(cc) {
     return parts.join(', ');
 }
 
+// 1. 导出一个缓存策略的类
 module.exports = class CachePolicy {
     constructor(
         req,
