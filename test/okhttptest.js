@@ -19,6 +19,7 @@ const assert = require('assert');
 const CachePolicy = require('..');
 
 describe('okhttp tests', function() {
+    // 测试哪些状态码会被存储
     it('response caching by response code', function() {
         // Test each documented HTTP/1.1 code, plus the first unused value in each range.
         // http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html
@@ -78,24 +79,34 @@ describe('okhttp tests', function() {
 
         const mockResponse = {
             headers: {
-                'last-modified': formatDate(-1, 3600),
-                expires: formatDate(1, 3600),
+                'last-modified': formatDate(-1, 3600), // 比当前时间早 1h，例如，Sun, 23 Feb 2020 09:11:11 GMT
+                expires: formatDate(1, 3600), // 比当前时间晚 1h，例如，Sun, 23 Feb 2020 07:11:11 GMT
                 'www-authenticate': 'challenge',
             },
-            status: responseCode,
+            status: responseCode, // 状态码，例如 100
             body: 'ABCDE',
         };
+
+        // 一些特殊的状态码必须有特殊的头部或者内容
+        // 401 => https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Status/401
+        // 407 => https://developer.mozilla.org/zh-CN/docs/Web/HTTP/Status/407
+        // 401、407 都是告诉客户端服务器需要验证信息，希望客户端发请求时能带上，只不过 407 是代理服务器需要验证时代理服务器发给客户端的
+        // 还有一个 403，是明确的告诉客户端没有权限的，也不用再尝试了
+        // 204、205 都表示请求成功但服务器不用返回任何内容
+        // 205 比 204 多一层意思，是要告诉客户端重置页面的信息，例如希望浏览器把提交后的表单重置一下
         if (responseCode == 407) {
+            // 407 响应必须含有 proxy-authenticate 头
             mockResponse.headers['proxy-authenticate'] =
                 'Basic realm="protected area"';
         } else if (responseCode == 401) {
+            // 401 响应必须含有 www-authenticate 头
             mockResponse.headers['www-authenticate'] =
                 'Basic realm="protected area"';
         } else if (responseCode == 204 || responseCode == 205) {
             mockResponse.body = ''; // We forbid bodies for 204 and 205.
         }
 
-        const request = { url: '/', headers: {} };
+        const request = { url: '/', headers: {} }; // 请求没有特殊的东西
 
         const cache = new CachePolicy(request, mockResponse, { shared: false });
 
@@ -269,8 +280,8 @@ describe('okhttp tests', function() {
             { shared: false }
         );
 
-        assert(!cache.stale());
-        assert(cache.age() >= 60);
+        assert(!cache.stale()); // 不是旧的缓存
+        assert(cache.age() >= 60); // 缓存的有效期已经又增加了 60 秒
 
         assert(
             cache.satisfiesWithoutRevalidation({
